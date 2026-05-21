@@ -1,0 +1,1328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0a0a0f">
+<title>Almeer OPS Scanner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a26;
+    --border: #2a2a3e;
+    --accent: #00d4aa;
+    --accent2: #7c5cfc;
+    --danger: #ff4d6d;
+    --warn: #ffb830;
+    --text: #e8e8f0;
+    --muted: #6b6b8a;
+    --mono: 'Space Mono', monospace;
+    --display: 'Syne', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--display);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── TOP BAR ── */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .topbar-logo {
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+  }
+
+  .topbar-logo span { color: var(--accent); }
+
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ── SETUP SCREEN ── */
+  #setup-screen {
+    padding: 32px 20px;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+
+  .setup-title {
+    font-size: 26px;
+    font-weight: 800;
+    margin-bottom: 8px;
+  }
+
+  .setup-title span { color: var(--accent); }
+
+  .setup-sub {
+    color: var(--muted);
+    font-size: 13px;
+    font-family: var(--mono);
+    margin-bottom: 32px;
+    line-height: 1.6;
+  }
+
+  .field-group { margin-bottom: 20px; }
+
+  .field-label {
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--accent);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  .field-input {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .field-input:focus { border-color: var(--accent); }
+
+  .btn-primary {
+    width: 100%;
+    background: var(--accent);
+    color: #0a0a0f;
+    border: none;
+    border-radius: 10px;
+    padding: 16px;
+    font-family: var(--display);
+    font-size: 15px;
+    font-weight: 800;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: opacity 0.2s, transform 0.1s;
+    margin-top: 8px;
+  }
+
+  .btn-primary:active { transform: scale(0.98); opacity: 0.85; }
+
+  /* ── MAIN APP ── */
+  #main-app { display: none; }
+
+  /* ── TAB NAV ── */
+  .tab-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0; right: 0;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex;
+    z-index: 100;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .tab-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 4px;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-family: var(--display);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: color 0.2s;
+    gap: 4px;
+  }
+
+  .tab-btn.active { color: var(--accent); }
+
+  .tab-icon {
+    font-size: 22px;
+    line-height: 1;
+  }
+
+  /* ── SCREENS ── */
+  .screen {
+    display: none;
+    padding: 20px 20px 100px;
+    max-width: 480px;
+    margin: 0 auto;
+    animation: fadeUp 0.25s ease;
+  }
+
+  .screen.active { display: block; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .screen-title {
+    font-size: 22px;
+    font-weight: 800;
+    margin-bottom: 4px;
+  }
+
+  .screen-sub {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 24px;
+    letter-spacing: 1px;
+  }
+
+  /* ── SCANNER BOX ── */
+  .scanner-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    margin-bottom: 20px;
+    position: relative;
+  }
+
+  .scanner-video {
+    width: 100%;
+    aspect-ratio: 4/3;
+    object-fit: cover;
+    display: block;
+    background: #000;
+  }
+
+  .scanner-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  .scan-frame {
+    width: 180px;
+    height: 120px;
+    border: 2px solid var(--accent);
+    border-radius: 8px;
+    position: relative;
+    box-shadow: 0 0 0 4000px rgba(0,0,0,0.4);
+  }
+
+  .scan-line {
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+    animation: scanLine 2s linear infinite;
+    top: 0;
+  }
+
+  @keyframes scanLine {
+    0% { top: 0; }
+    50% { top: calc(100% - 2px); }
+    100% { top: 0; }
+  }
+
+  .scan-corner {
+    position: absolute;
+    width: 16px; height: 16px;
+    border-color: var(--accent);
+    border-style: solid;
+  }
+
+  .scan-corner.tl { top: -2px; left: -2px; border-width: 3px 0 0 3px; border-radius: 4px 0 0 0; }
+  .scan-corner.tr { top: -2px; right: -2px; border-width: 3px 3px 0 0; border-radius: 0 4px 0 0; }
+  .scan-corner.bl { bottom: -2px; left: -2px; border-width: 0 0 3px 3px; border-radius: 0 0 0 4px; }
+  .scan-corner.br { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; border-radius: 0 0 4px 0; }
+
+  .scanner-hint {
+    position: absolute;
+    bottom: 12px;
+    left: 0; right: 0;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: rgba(255,255,255,0.7);
+    letter-spacing: 1px;
+  }
+
+  /* Scanner controls */
+  .scanner-controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .btn-scan {
+    flex: 1;
+    background: var(--accent);
+    color: #0a0a0f;
+    border: none;
+    border-radius: 10px;
+    padding: 14px;
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 14px;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+  }
+
+  .btn-scan:active { transform: scale(0.97); opacity: 0.85; }
+
+  .btn-scan.danger {
+    background: var(--danger);
+  }
+
+  .btn-outline {
+    flex: 1;
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+
+  .btn-outline:active { border-color: var(--accent); }
+
+  /* Manual input */
+  .manual-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  .manual-input {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 14px;
+    outline: none;
+  }
+
+  .manual-input:focus { border-color: var(--accent); }
+
+  .btn-go {
+    background: var(--accent2);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 14px 20px;
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 14px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  /* ── RESULT CARD ── */
+  .result-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 16px;
+    display: none;
+  }
+
+  .result-card.visible { display: block; animation: fadeUp 0.2s ease; }
+
+  .result-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface2);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 1px;
+    margin-bottom: 14px;
+  }
+
+  .result-status.delivered { color: var(--accent); border: 1px solid var(--accent); }
+  .result-status.rto { color: var(--danger); border: 1px solid var(--danger); }
+  .result-status.transit { color: var(--warn); border: 1px solid var(--warn); }
+  .result-status.pending { color: var(--muted); border: 1px solid var(--border); }
+
+  .result-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+  }
+
+  .result-row:last-child { border-bottom: none; }
+
+  .result-key {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    padding-top: 2px;
+  }
+
+  .result-val {
+    font-size: 14px;
+    font-weight: 600;
+    text-align: right;
+    word-break: break-word;
+  }
+
+  .result-val.cod { color: var(--accent); font-family: var(--mono); font-size: 16px; }
+
+  /* ── TOAST ── */
+  .toast {
+    position: fixed;
+    bottom: 90px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 20px;
+    font-family: var(--mono);
+    font-size: 13px;
+    opacity: 0;
+    transition: all 0.3s;
+    z-index: 200;
+    white-space: nowrap;
+    max-width: 90vw;
+    text-overflow: ellipsis;
+    overflow: hidden;
+  }
+
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .toast.success { border-color: var(--accent); color: var(--accent); }
+  .toast.error { border-color: var(--danger); color: var(--danger); }
+  .toast.warn { border-color: var(--warn); color: var(--warn); }
+
+  /* ── LOG LIST ── */
+  .log-list { display: flex; flex-direction: column; gap: 10px; }
+
+  .log-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .log-icon {
+    width: 38px; height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+
+  .log-icon.dispatch { background: rgba(0,212,170,0.12); }
+  .log-icon.return { background: rgba(255,77,109,0.12); }
+
+  .log-info { flex: 1; min-width: 0; }
+
+  .log-tracking {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    margin-bottom: 3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .log-meta {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  .log-badge {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 1px;
+    padding: 3px 8px;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+
+  .log-badge.synced { background: rgba(0,212,170,0.12); color: var(--accent); }
+  .log-badge.pending { background: rgba(255,184,48,0.12); color: var(--warn); }
+
+  /* ── STATS ROW ── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+  }
+
+  .stat-num {
+    font-size: 28px;
+    font-weight: 800;
+    font-family: var(--mono);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .stat-num.green { color: var(--accent); }
+  .stat-num.red { color: var(--danger); }
+  .stat-num.purple { color: var(--accent2); }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+    letter-spacing: 0.5px;
+  }
+
+  /* ── SECTION LABEL ── */
+  .section-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  /* ── EMPTY STATE ── */
+  .empty-state {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--muted);
+  }
+
+  .empty-icon { font-size: 48px; margin-bottom: 12px; }
+
+  .empty-text {
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.8;
+  }
+
+  /* ── LOADING ── */
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 20px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── OFFLINE BANNER ── */
+  .offline-banner {
+    background: rgba(255,184,48,0.1);
+    border: 1px solid var(--warn);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--warn);
+    margin-bottom: 16px;
+    display: none;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .offline-banner.visible { display: flex; }
+
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="topbar-logo">Almeer<span>OPS</span></div>
+  <div style="display:flex;align-items:center;gap:8px;">
+    <span id="online-label" style="font-family:var(--mono);font-size:10px;color:var(--muted);">ONLINE</span>
+    <div class="status-dot" id="status-dot"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════ -->
+<!--  SETUP SCREEN                     -->
+<!-- ══════════════════════════════════ -->
+<div id="setup-screen">
+  <div class="setup-title">First Time<br><span>Setup</span></div>
+  <p class="setup-sub">Enter your Apps Script Web App URL.<br>You only do this once.</p>
+
+  <div class="field-group">
+    <label class="field-label">Apps Script URL</label>
+    <input class="field-input" id="script-url" type="url"
+      placeholder="https://script.google.com/macros/s/..."
+      autocomplete="off" spellcheck="false">
+  </div>
+
+  <div class="field-group">
+    <label class="field-label">Your Name (for scan logs)</label>
+    <input class="field-input" id="user-name" type="text" placeholder="e.g. Ahmed">
+  </div>
+
+  <button class="btn-primary" onclick="saveSetup()">Save & Start →</button>
+</div>
+
+<!-- ══════════════════════════════════ -->
+<!--  MAIN APP                         -->
+<!-- ══════════════════════════════════ -->
+<div id="main-app">
+
+  <!-- ── DISPATCH SCREEN ── -->
+  <div class="screen active" id="screen-dispatch">
+    <div class="screen-title">Dispatch</div>
+    <div class="screen-sub">SCAN · VERIFY · CONFIRM</div>
+
+    <div class="offline-banner" id="offline-banner-dispatch">
+      ⚠️ Offline — scans saved locally, will sync when connected
+    </div>
+
+    <div class="scanner-box" id="dispatch-scanner-box">
+      <video class="scanner-video" id="dispatch-video" playsinline muted></video>
+      <div class="scanner-overlay">
+        <div class="scan-frame">
+          <div class="scan-line"></div>
+          <div class="scan-corner tl"></div>
+          <div class="scan-corner tr"></div>
+          <div class="scan-corner bl"></div>
+          <div class="scan-corner br"></div>
+        </div>
+        <div class="scanner-hint">ALIGN BARCODE IN FRAME</div>
+      </div>
+    </div>
+
+    <div class="scanner-controls">
+      <button class="btn-scan" id="dispatch-cam-btn" onclick="toggleDispatchCamera()">📷 Start Camera</button>
+      <button class="btn-outline" onclick="resetDispatchResult()">↺ Reset</button>
+    </div>
+
+    <div class="manual-row">
+      <input class="manual-input" id="dispatch-manual" placeholder="Type tracking ID manually..." autocomplete="off">
+      <button class="btn-go" onclick="manualDispatch()">Go</button>
+    </div>
+
+    <div class="result-card" id="dispatch-result">
+      <div class="result-status pending" id="dispatch-status-badge">⏳ PENDING</div>
+      <div id="dispatch-result-body"></div>
+      <div style="margin-top:16px;">
+        <button class="btn-scan" id="dispatch-confirm-btn" onclick="confirmDispatch()" style="display:none;">
+          ✅ Confirm Dispatch
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── RETURN SCREEN ── -->
+  <div class="screen" id="screen-return">
+    <div class="screen-title">Returns</div>
+    <div class="screen-sub">SCAN RETURNED PARCELS</div>
+
+    <div class="offline-banner" id="offline-banner-return">
+      ⚠️ Offline — return scans saved locally
+    </div>
+
+    <div class="scanner-box" id="return-scanner-box">
+      <video class="scanner-video" id="return-video" playsinline muted></video>
+      <div class="scanner-overlay">
+        <div class="scan-frame">
+          <div class="scan-line"></div>
+          <div class="scan-corner tl"></div>
+          <div class="scan-corner tr"></div>
+          <div class="scan-corner bl"></div>
+          <div class="scan-corner br"></div>
+        </div>
+        <div class="scanner-hint">SCAN RETURN LABEL</div>
+      </div>
+    </div>
+
+    <div class="scanner-controls">
+      <button class="btn-scan danger" id="return-cam-btn" onclick="toggleReturnCamera()">📷 Start Camera</button>
+      <button class="btn-outline" onclick="resetReturnResult()">↺ Reset</button>
+    </div>
+
+    <div class="manual-row">
+      <input class="manual-input" id="return-manual" placeholder="Type tracking ID manually..." autocomplete="off">
+      <button class="btn-go" onclick="manualReturn()">Go</button>
+    </div>
+
+    <div class="result-card" id="return-result">
+      <div class="result-status rto" id="return-status-badge">↩️ RETURN</div>
+      <div id="return-result-body"></div>
+      <div style="margin-top:16px;">
+        <button class="btn-scan danger" id="return-confirm-btn" onclick="confirmReturn()" style="display:none;">
+          ↩️ Log Return
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── LOOKUP SCREEN ── -->
+  <div class="screen" id="screen-lookup">
+    <div class="screen-title">Order Lookup</div>
+    <div class="screen-sub">SEARCH BY TRACKING ID</div>
+
+    <div class="manual-row">
+      <input class="manual-input" id="lookup-input" placeholder="Enter tracking ID..." autocomplete="off">
+      <button class="btn-go" onclick="lookupOrder()">🔍</button>
+    </div>
+
+    <div id="lookup-loading" class="loading" style="display:none;">
+      <div class="spinner"></div> Searching...
+    </div>
+
+    <div class="result-card" id="lookup-result"></div>
+  </div>
+
+  <!-- ── LOG SCREEN ── -->
+  <div class="screen" id="screen-log">
+    <div class="screen-title">Scan Log</div>
+    <div class="screen-sub">TODAY'S ACTIVITY</div>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-num green" id="stat-dispatched">0</div>
+        <div class="stat-label">Dispatched</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num red" id="stat-returns">0</div>
+        <div class="stat-label">Returns</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num purple" id="stat-pending-sync">0</div>
+        <div class="stat-label">Pending Sync</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" id="stat-total">0</div>
+        <div class="stat-label">Total Scans</div>
+      </div>
+    </div>
+
+    <div class="section-label">Recent Scans</div>
+
+    <div class="log-list" id="log-list">
+      <div class="empty-state">
+        <div class="empty-icon">📭</div>
+        <div class="empty-text">No scans yet today.<br>Start scanning to see activity here.</div>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;">
+      <button class="btn-primary" onclick="syncPendingScans()" style="background:var(--accent2);">
+        🔄 Sync Pending Scans
+      </button>
+    </div>
+  </div>
+
+  <!-- ── BOTTOM NAV ── -->
+  <div class="tab-nav">
+    <button class="tab-btn active" onclick="switchTab('dispatch')" id="tab-dispatch">
+      <span class="tab-icon">📦</span>Dispatch
+    </button>
+    <button class="tab-btn" onclick="switchTab('return')" id="tab-return">
+      <span class="tab-icon">↩️</span>Returns
+    </button>
+    <button class="tab-btn" onclick="switchTab('lookup')" id="tab-lookup">
+      <span class="tab-icon">🔍</span>Lookup
+    </button>
+    <button class="tab-btn" onclick="switchTab('log')" id="tab-log">
+      <span class="tab-icon">📋</span>Log
+    </button>
+  </div>
+
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- ZXing barcode library (CDN) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.21.3/zxing.min.js"></script>
+
+<script>
+// ═══════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════
+let CONFIG = {
+  scriptUrl: "",
+  userName: "Scanner",
+};
+
+let scanLog = [];
+let pendingScans = [];
+let dispatchCameraActive = false;
+let returnCameraActive = false;
+let dispatchReader = null;
+let returnReader = null;
+let currentDispatchTracking = null;
+let currentReturnTracking = null;
+
+// ═══════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════
+window.addEventListener('load', () => {
+  loadConfig();
+  loadScanLog();
+  checkOnlineStatus();
+  window.addEventListener('online', checkOnlineStatus);
+  window.addEventListener('offline', checkOnlineStatus);
+
+  // Enter key on manual inputs
+  document.getElementById('dispatch-manual').addEventListener('keydown', e => {
+    if (e.key === 'Enter') manualDispatch();
+  });
+  document.getElementById('return-manual').addEventListener('keydown', e => {
+    if (e.key === 'Enter') manualReturn();
+  });
+  document.getElementById('lookup-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') lookupOrder();
+  });
+});
+
+function loadConfig() {
+  const saved = localStorage.getItem('almeer_config');
+  if (saved) {
+    CONFIG = JSON.parse(saved);
+    if (CONFIG.scriptUrl) showMainApp();
+  }
+}
+
+function saveSetup() {
+  const url = document.getElementById('script-url').value.trim();
+  const name = document.getElementById('user-name').value.trim();
+  if (!url) { showToast('Enter your Apps Script URL', 'error'); return; }
+  CONFIG.scriptUrl = url;
+  CONFIG.userName = name || 'Scanner';
+  localStorage.setItem('almeer_config', JSON.stringify(CONFIG));
+  showMainApp();
+  showToast('Setup saved! Welcome ' + CONFIG.userName, 'success');
+}
+
+function showMainApp() {
+  document.getElementById('setup-screen').style.display = 'none';
+  document.getElementById('main-app').style.display = 'block';
+  updateLogStats();
+}
+
+// ═══════════════════════════════════════════
+//  TAB NAVIGATION
+// ═══════════════════════════════════════════
+function switchTab(tab) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('screen-' + tab).classList.add('active');
+  document.getElementById('tab-' + tab).classList.add('active');
+
+  // Stop cameras when switching away
+  if (tab !== 'dispatch' && dispatchCameraActive) toggleDispatchCamera();
+  if (tab !== 'return' && returnCameraActive) toggleReturnCamera();
+
+  if (tab === 'log') { loadScanLog(); updateLogStats(); }
+}
+
+// ═══════════════════════════════════════════
+//  ONLINE STATUS
+// ═══════════════════════════════════════════
+function checkOnlineStatus() {
+  const online = navigator.onLine;
+  const dot = document.getElementById('status-dot');
+  const label = document.getElementById('online-label');
+  dot.style.background = online ? 'var(--accent)' : 'var(--warn)';
+  dot.style.boxShadow = online ? '0 0 8px var(--accent)' : '0 0 8px var(--warn)';
+  label.textContent = online ? 'ONLINE' : 'OFFLINE';
+  label.style.color = online ? 'var(--muted)' : 'var(--warn)';
+
+  document.querySelectorAll('.offline-banner').forEach(b => {
+    b.classList.toggle('visible', !online);
+  });
+}
+
+// ═══════════════════════════════════════════
+//  DISPATCH SCANNER
+// ═══════════════════════════════════════════
+async function toggleDispatchCamera() {
+  if (dispatchCameraActive) {
+    stopCamera('dispatch');
+    return;
+  }
+
+  const video = document.getElementById('dispatch-video');
+  const btn = document.getElementById('dispatch-cam-btn');
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    video.srcObject = stream;
+    video.play();
+    dispatchCameraActive = true;
+    btn.textContent = '⏹ Stop Camera';
+
+    // Use ZXing if available, otherwise fallback
+    if (typeof ZXing !== 'undefined') {
+      startZXingDispatch(video);
+    }
+  } catch (err) {
+    showToast('Camera error: ' + err.message, 'error');
+  }
+}
+
+function startZXingDispatch(video) {
+  try {
+    const hints = new Map();
+    const formats = [
+      ZXing.BarcodeFormat.CODE_128,
+      ZXing.BarcodeFormat.CODE_39,
+      ZXing.BarcodeFormat.QR_CODE,
+      ZXing.BarcodeFormat.EAN_13,
+    ];
+    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+    dispatchReader = new ZXing.BrowserMultiFormatReader(hints);
+
+    dispatchReader.decodeFromVideoDevice(null, 'dispatch-video', (result, err) => {
+      if (result) {
+        const code = result.getText();
+        stopCamera('dispatch');
+        lookupDispatchTracking(code);
+      }
+    });
+  } catch (e) {
+    // ZXing not loaded from CDN, manual input still works
+    showToast('Use manual input if camera scan fails', 'warn');
+  }
+}
+
+function stopCamera(type) {
+  const video = document.getElementById(type + '-video');
+  if (video.srcObject) {
+    video.srcObject.getTracks().forEach(t => t.stop());
+    video.srcObject = null;
+  }
+  if (type === 'dispatch') {
+    dispatchCameraActive = false;
+    document.getElementById('dispatch-cam-btn').textContent = '📷 Start Camera';
+    if (dispatchReader) { try { dispatchReader.reset(); } catch(e){} dispatchReader = null; }
+  } else {
+    returnCameraActive = false;
+    document.getElementById('return-cam-btn').textContent = '📷 Start Camera';
+    if (returnReader) { try { returnReader.reset(); } catch(e){} returnReader = null; }
+  }
+}
+
+function manualDispatch() {
+  const val = document.getElementById('dispatch-manual').value.trim();
+  if (!val) { showToast('Enter a tracking ID', 'warn'); return; }
+  lookupDispatchTracking(val);
+  document.getElementById('dispatch-manual').value = '';
+}
+
+async function lookupDispatchTracking(trackingId) {
+  currentDispatchTracking = trackingId;
+  const card = document.getElementById('dispatch-result');
+  const body = document.getElementById('dispatch-result-body');
+  const badge = document.getElementById('dispatch-status-badge');
+  const confirmBtn = document.getElementById('dispatch-confirm-btn');
+
+  card.classList.add('visible');
+  body.innerHTML = '<div class="loading"><div class="spinner"></div> Looking up order...</div>';
+  confirmBtn.style.display = 'none';
+
+  const data = await fetchOrderLookup(trackingId);
+
+  if (data && data.found) {
+    badge.className = 'result-status ' + statusClass(data.status);
+    badge.textContent = statusEmoji(data.status) + ' ' + (data.status || 'UNKNOWN').toUpperCase();
+    body.innerHTML = buildResultRows([
+      ['TRACKING', trackingId],
+      ['ORDER ID', data.orderId],
+      ['CUSTOMER', data.customerName],
+      ['PRODUCT', data.product + (data.variant && data.variant !== 'N/A' ? ' · ' + data.variant : '')],
+      ['CITY', data.city],
+      ['COD AMOUNT', 'PKR ' + (data.cod || 0).toLocaleString()],
+    ], [5]); // index 5 = COD → green style
+    confirmBtn.style.display = 'block';
+  } else {
+    badge.className = 'result-status pending';
+    badge.textContent = '⚠️ NOT FOUND IN SHEETS';
+    body.innerHTML = buildResultRows([
+      ['TRACKING', trackingId],
+      ['STATUS', 'Order not found in Almeer OPS'],
+    ]);
+    confirmBtn.style.display = 'block';
+    confirmBtn.textContent = '✅ Log Anyway';
+  }
+}
+
+function confirmDispatch() {
+  if (!currentDispatchTracking) return;
+  postScan({ action: 'dispatch', tracking: currentDispatchTracking, scannedBy: CONFIG.userName });
+  addToLocalLog({ type: 'dispatch', tracking: currentDispatchTracking, time: new Date().toISOString() });
+  showToast('✅ Dispatched: ' + currentDispatchTracking, 'success');
+  resetDispatchResult();
+  updateLogStats();
+}
+
+function resetDispatchResult() {
+  currentDispatchTracking = null;
+  document.getElementById('dispatch-result').classList.remove('visible');
+  document.getElementById('dispatch-manual').value = '';
+}
+
+// ═══════════════════════════════════════════
+//  RETURN SCANNER
+// ═══════════════════════════════════════════
+async function toggleReturnCamera() {
+  if (returnCameraActive) {
+    stopCamera('return');
+    return;
+  }
+
+  const video = document.getElementById('return-video');
+  const btn = document.getElementById('return-cam-btn');
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment' }
+    });
+    video.srcObject = stream;
+    video.play();
+    returnCameraActive = true;
+    btn.textContent = '⏹ Stop Camera';
+
+    if (typeof ZXing !== 'undefined') {
+      try {
+        returnReader = new ZXing.BrowserMultiFormatReader();
+        returnReader.decodeFromVideoDevice(null, 'return-video', (result, err) => {
+          if (result) {
+            const code = result.getText();
+            stopCamera('return');
+            lookupReturnTracking(code);
+          }
+        });
+      } catch(e) {}
+    }
+  } catch (err) {
+    showToast('Camera error: ' + err.message, 'error');
+  }
+}
+
+function manualReturn() {
+  const val = document.getElementById('return-manual').value.trim();
+  if (!val) { showToast('Enter a tracking ID', 'warn'); return; }
+  lookupReturnTracking(val);
+  document.getElementById('return-manual').value = '';
+}
+
+async function lookupReturnTracking(trackingId) {
+  currentReturnTracking = trackingId;
+  const card = document.getElementById('return-result');
+  const body = document.getElementById('return-result-body');
+  const confirmBtn = document.getElementById('return-confirm-btn');
+
+  card.classList.add('visible');
+  body.innerHTML = '<div class="loading"><div class="spinner"></div> Looking up order...</div>';
+  confirmBtn.style.display = 'none';
+
+  const data = await fetchOrderLookup(trackingId);
+
+  if (data && data.found) {
+    body.innerHTML = buildResultRows([
+      ['TRACKING', trackingId],
+      ['ORDER ID', data.orderId],
+      ['CUSTOMER', data.customerName],
+      ['PRODUCT', data.product],
+      ['CITY', data.city],
+      ['COD AMOUNT', 'PKR ' + (data.cod || 0).toLocaleString()],
+      ['CURRENT STATUS', data.status],
+    ], [5]);
+  } else {
+    body.innerHTML = buildResultRows([
+      ['TRACKING', trackingId],
+      ['STATUS', 'Not found in system — will be logged as manual return'],
+    ]);
+  }
+  confirmBtn.style.display = 'block';
+}
+
+function confirmReturn() {
+  if (!currentReturnTracking) return;
+  postScan({ action: 'return', tracking: currentReturnTracking, scannedBy: CONFIG.userName });
+  addToLocalLog({ type: 'return', tracking: currentReturnTracking, time: new Date().toISOString() });
+  showToast('↩️ Return logged: ' + currentReturnTracking, 'success');
+  resetReturnResult();
+  updateLogStats();
+}
+
+function resetReturnResult() {
+  currentReturnTracking = null;
+  document.getElementById('return-result').classList.remove('visible');
+  document.getElementById('return-manual').value = '';
+}
+
+// ═══════════════════════════════════════════
+//  ORDER LOOKUP
+// ═══════════════════════════════════════════
+async function lookupOrder() {
+  const trackingId = document.getElementById('lookup-input').value.trim();
+  if (!trackingId) { showToast('Enter a tracking ID', 'warn'); return; }
+
+  const loading = document.getElementById('lookup-loading');
+  const card = document.getElementById('lookup-result');
+  loading.style.display = 'flex';
+  card.classList.remove('visible');
+
+  const data = await fetchOrderLookup(trackingId);
+  loading.style.display = 'none';
+
+  card.classList.add('visible');
+
+  if (data && data.found) {
+    card.innerHTML = `
+      <div class="result-status ${statusClass(data.status)}">${statusEmoji(data.status)} ${(data.status||'').toUpperCase()}</div>
+      ${buildResultRows([
+        ['TRACKING', trackingId],
+        ['ORDER ID', data.orderId],
+        ['PRODUCT', data.product + (data.variant && data.variant !== 'N/A' ? ' · ' + data.variant : '')],
+        ['CUSTOMER', data.customerName],
+        ['CITY', data.city],
+        ['COD AMOUNT', 'PKR ' + (data.cod||0).toLocaleString()],
+        ['COURIER STATUS', data.courierStatus || '—'],
+      ], [5])}`;
+  } else {
+    card.innerHTML = `
+      <div class="result-status pending">⚠️ NOT FOUND</div>
+      ${buildResultRows([['TRACKING', trackingId], ['INFO', 'No order found with this tracking ID.']])}`;
+  }
+}
+
+// ═══════════════════════════════════════════
+//  API CALLS
+// ═══════════════════════════════════════════
+async function fetchOrderLookup(trackingId) {
+  if (!navigator.onLine) {
+    return null;
+  }
+  try {
+    const url = CONFIG.scriptUrl + '?action=lookup&tracking=' + encodeURIComponent(trackingId);
+    const res = await fetch(url, { method: 'GET' });
+    const text = await res.text();
+    return JSON.parse(text);
+  } catch (err) {
+    showToast('Lookup failed — check connection', 'error');
+    return null;
+  }
+}
+
+async function postScan(payload) {
+  if (!navigator.onLine) {
+    pendingScans.push({ ...payload, timestamp: new Date().toISOString() });
+    localStorage.setItem('almeer_pending', JSON.stringify(pendingScans));
+    showToast('Saved offline — will sync later', 'warn');
+    return;
+  }
+  try {
+    await fetch(CONFIG.scriptUrl, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (err) {
+    // Save to pending queue
+    pendingScans.push({ ...payload, timestamp: new Date().toISOString() });
+    localStorage.setItem('almeer_pending', JSON.stringify(pendingScans));
+    showToast('Saved offline — will sync later', 'warn');
+  }
+}
+
+async function syncPendingScans() {
+  const pending = JSON.parse(localStorage.getItem('almeer_pending') || '[]');
+  if (pending.length === 0) { showToast('Nothing to sync', 'warn'); return; }
+  if (!navigator.onLine) { showToast('Still offline', 'error'); return; }
+
+  let synced = 0;
+  for (const scan of pending) {
+    try {
+      await fetch(CONFIG.scriptUrl, {
+        method: 'POST',
+        body: JSON.stringify(scan),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      synced++;
+    } catch (e) {}
+  }
+
+  localStorage.removeItem('almeer_pending');
+  pendingScans = [];
+  updateLogStats();
+  showToast('Synced ' + synced + ' scans', 'success');
+}
+
+// ═══════════════════════════════════════════
+//  LOCAL LOG
+// ═══════════════════════════════════════════
+function addToLocalLog(entry) {
+  const todayKey = new Date().toDateString();
+  const logs = JSON.parse(localStorage.getItem('almeer_log_' + todayKey) || '[]');
+  logs.unshift(entry);
+  localStorage.setItem('almeer_log_' + todayKey, JSON.stringify(logs));
+}
+
+function loadScanLog() {
+  const todayKey = new Date().toDateString();
+  scanLog = JSON.parse(localStorage.getItem('almeer_log_' + todayKey) || '[]');
+  pendingScans = JSON.parse(localStorage.getItem('almeer_pending') || '[]');
+  renderLog();
+}
+
+function renderLog() {
+  const list = document.getElementById('log-list');
+  if (scanLog.length === 0) {
+    list.innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">No scans today.</div></div>`;
+    return;
+  }
+
+  list.innerHTML = scanLog.map(entry => `
+    <div class="log-item">
+      <div class="log-icon ${entry.type}">${entry.type === 'dispatch' ? '📦' : '↩️'}</div>
+      <div class="log-info">
+        <div class="log-tracking">${entry.tracking}</div>
+        <div class="log-meta">${entry.type.toUpperCase()} · ${formatTime(entry.time)}</div>
+      </div>
+      <span class="log-badge synced">SYNCED</span>
+    </div>
+  `).join('');
+}
+
+function updateLogStats() {
+  loadScanLog();
+  const dispatched = scanLog.filter(e => e.type === 'dispatch').length;
+  const returns = scanLog.filter(e => e.type === 'return').length;
+  const pending = pendingScans.length;
+  document.getElementById('stat-dispatched').textContent = dispatched;
+  document.getElementById('stat-returns').textContent = returns;
+  document.getElementById('stat-pending-sync').textContent = pending;
+  document.getElementById('stat-total').textContent = scanLog.length;
+}
+
+// ═══════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════
+function buildResultRows(rows, greenIndices = []) {
+  return rows.map((r, i) => `
+    <div class="result-row">
+      <span class="result-key">${r[0]}</span>
+      <span class="result-val ${greenIndices.includes(i) ? 'cod' : ''}">${r[1] || '—'}</span>
+    </div>
+  `).join('');
+}
+
+function statusClass(status) {
+  if (!status) return 'pending';
+  const s = status.toLowerCase();
+  if (s.includes('delivered')) return 'delivered';
+  if (s.includes('rto') || s.includes('return')) return 'rto';
+  if (s.includes('transit') || s.includes('delivery') || s.includes('dispatched')) return 'transit';
+  return 'pending';
+}
+
+function statusEmoji(status) {
+  if (!status) return '⏳';
+  const s = status.toLowerCase();
+  if (s.includes('delivered')) return '✅';
+  if (s.includes('rto') || s.includes('return')) return '↩️';
+  if (s.includes('transit') || s.includes('dispatched')) return '🚚';
+  if (s.includes('attempt')) return '🔄';
+  return '⏳';
+}
+
+function formatTime(iso) {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' });
+  } catch (e) { return iso; }
+}
+
+function showToast(msg, type = 'success') {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.className = 'toast ' + type + ' show';
+  setTimeout(() => { toast.classList.remove('show'); }, 3000);
+}
+</script>
+</body>
+</html>
