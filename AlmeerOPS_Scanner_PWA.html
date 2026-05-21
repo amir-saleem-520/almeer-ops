@@ -655,8 +655,8 @@
     </div>
 
     <div class="scanner-box" id="dispatch-scanner-box">
-      <video class="scanner-video" id="dispatch-video" playsinline muted></video>
-      <div class="scanner-overlay">
+      <div id="dispatch-video" style="width:100%;"></div>
+      <div class="scanner-overlay" id="dispatch-overlay">
         <div class="scan-frame">
           <div class="scan-line"></div>
           <div class="scan-corner tl"></div>
@@ -699,8 +699,8 @@
     </div>
 
     <div class="scanner-box" id="return-scanner-box">
-      <video class="scanner-video" id="return-video" playsinline muted></video>
-      <div class="scanner-overlay">
+      <div id="return-video" style="width:100%;"></div>
+      <div class="scanner-overlay" id="return-overlay">
         <div class="scan-frame">
           <div class="scan-line"></div>
           <div class="scan-corner tl"></div>
@@ -811,8 +811,8 @@
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
-<!-- ZXing barcode library (CDN) -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.21.3/zxing.min.js"></script>
+<!-- html5-qrcode — reliable mobile barcode + QR scanner -->
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
 <script>
 // ═══════════════════════════════════════════
@@ -827,8 +827,6 @@ let scanLog = [];
 let pendingScans = [];
 let dispatchCameraActive = false;
 let returnCameraActive = false;
-let dispatchReader = null;
-let returnReader = null;
 let currentDispatchTracking = null;
 let currentReturnTracking = null;
 
@@ -913,74 +911,80 @@ function checkOnlineStatus() {
 }
 
 // ═══════════════════════════════════════════
-//  DISPATCH SCANNER
+//  DISPATCH SCANNER — html5-qrcode
 // ═══════════════════════════════════════════
+let dispatchScanner = null;
+
 async function toggleDispatchCamera() {
   if (dispatchCameraActive) {
-    stopCamera('dispatch');
+    await stopCamera('dispatch');
     return;
   }
 
-  const video = document.getElementById('dispatch-video');
   const btn = document.getElementById('dispatch-cam-btn');
+  btn.textContent = '⏳ Starting...';
+  btn.disabled = true;
 
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
-    });
-    video.srcObject = stream;
-    video.play();
+    dispatchScanner = new Html5Qrcode("dispatch-video");
+    await dispatchScanner.start(
+      { facingMode: "environment" },
+      {
+        fps: 10,
+        qrbox: { width: 220, height: 140 },
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.QR_CODE,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.DATA_MATRIX,
+        ],
+      },
+      (decodedText) => {
+        // Scan success
+        stopCamera('dispatch');
+        lookupDispatchTracking(decodedText.trim());
+      },
+      (errorMsg) => {
+        // Scanning frame — ignore per-frame errors
+      }
+    );
     dispatchCameraActive = true;
     btn.textContent = '⏹ Stop Camera';
-
-    // Use ZXing if available, otherwise fallback
-    if (typeof ZXing !== 'undefined') {
-      startZXingDispatch(video);
-    }
+    btn.disabled = false;
   } catch (err) {
-    showToast('Camera error: ' + err.message, 'error');
-  }
-}
-
-function startZXingDispatch(video) {
-  try {
-    const hints = new Map();
-    const formats = [
-      ZXing.BarcodeFormat.CODE_128,
-      ZXing.BarcodeFormat.CODE_39,
-      ZXing.BarcodeFormat.QR_CODE,
-      ZXing.BarcodeFormat.EAN_13,
-    ];
-    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
-    dispatchReader = new ZXing.BrowserMultiFormatReader(hints);
-
-    dispatchReader.decodeFromVideoDevice(null, 'dispatch-video', (result, err) => {
-      if (result) {
-        const code = result.getText();
-        stopCamera('dispatch');
-        lookupDispatchTracking(code);
-      }
-    });
-  } catch (e) {
-    // ZXing not loaded from CDN, manual input still works
-    showToast('Use manual input if camera scan fails', 'warn');
-  }
-}
-
-function stopCamera(type) {
-  const video = document.getElementById(type + '-video');
-  if (video.srcObject) {
-    video.srcObject.getTracks().forEach(t => t.stop());
-    video.srcObject = null;
-  }
-  if (type === 'dispatch') {
     dispatchCameraActive = false;
-    document.getElementById('dispatch-cam-btn').textContent = '📷 Start Camera';
-    if (dispatchReader) { try { dispatchReader.reset(); } catch(e){} dispatchReader = null; }
+    btn.textContent = '📷 Start Camera';
+    btn.disabled = false;
+    showToast('Camera error: ' + err, 'error');
+  }
+}
+
+async function stopCamera(type) {
+  if (type === 'dispatch') {
+    if (dispatchScanner) {
+      try {
+        if (dispatchCameraActive) await dispatchScanner.stop();
+        dispatchScanner.clear();
+      } catch(e) {}
+      dispatchScanner = null;
+    }
+    dispatchCameraActive = false;
+    const btn = document.getElementById('dispatch-cam-btn');
+    btn.textContent = '📷 Start Camera';
+    btn.disabled = false;
   } else {
+    if (returnScanner) {
+      try {
+        if (returnCameraActive) await returnScanner.stop();
+        returnScanner.clear();
+      } catch(e) {}
+      returnScanner = null;
+    }
     returnCameraActive = false;
-    document.getElementById('return-cam-btn').textContent = '📷 Start Camera';
-    if (returnReader) { try { returnReader.reset(); } catch(e){} returnReader = null; }
+    const btn = document.getElementById('return-cam-btn');
+    btn.textContent = '📷 Start Camera';
+    btn.disabled = false;
   }
 }
 
@@ -1044,40 +1048,51 @@ function resetDispatchResult() {
 }
 
 // ═══════════════════════════════════════════
-//  RETURN SCANNER
+//  RETURN SCANNER — html5-qrcode
 // ═══════════════════════════════════════════
+let returnScanner = null;
+
 async function toggleReturnCamera() {
   if (returnCameraActive) {
-    stopCamera('return');
+    await stopCamera('return');
     return;
   }
 
-  const video = document.getElementById('return-video');
   const btn = document.getElementById('return-cam-btn');
+  btn.textContent = '⏳ Starting...';
+  btn.disabled = true;
 
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment' }
-    });
-    video.srcObject = stream;
-    video.play();
+    returnScanner = new Html5Qrcode("return-video");
+    await returnScanner.start(
+      { facingMode: "environment" },
+      {
+        fps: 10,
+        qrbox: { width: 220, height: 140 },
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.QR_CODE,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.DATA_MATRIX,
+        ],
+      },
+      (decodedText) => {
+        stopCamera('return');
+        lookupReturnTracking(decodedText.trim());
+      },
+      (errorMsg) => {
+        // Per-frame error — ignore
+      }
+    );
     returnCameraActive = true;
     btn.textContent = '⏹ Stop Camera';
-
-    if (typeof ZXing !== 'undefined') {
-      try {
-        returnReader = new ZXing.BrowserMultiFormatReader();
-        returnReader.decodeFromVideoDevice(null, 'return-video', (result, err) => {
-          if (result) {
-            const code = result.getText();
-            stopCamera('return');
-            lookupReturnTracking(code);
-          }
-        });
-      } catch(e) {}
-    }
+    btn.disabled = false;
   } catch (err) {
-    showToast('Camera error: ' + err.message, 'error');
+    returnCameraActive = false;
+    btn.textContent = '📷 Start Camera';
+    btn.disabled = false;
+    showToast('Camera error: ' + err, 'error');
   }
 }
 
