@@ -612,9 +612,14 @@
 <!-- TOP BAR -->
 <div class="topbar">
   <div class="topbar-logo">Almeer<span>OPS</span></div>
-  <div style="display:flex;align-items:center;gap:8px;">
-    <span id="online-label" style="font-family:var(--mono);font-size:10px;color:var(--muted);">ONLINE</span>
-    <div class="status-dot" id="status-dot"></div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <button onclick="showResetPrompt()" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--muted);font-family:var(--mono);font-size:10px;cursor:pointer;letter-spacing:1px;">
+      ⚙️ URL
+    </button>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span id="online-label" style="font-family:var(--mono);font-size:10px;color:var(--muted);">ONLINE</span>
+      <div class="status-dot" id="status-dot"></div>
+    </div>
   </div>
 </div>
 
@@ -834,6 +839,10 @@ let currentReturnTracking = null;
 //  INIT
 // ═══════════════════════════════════════════
 window.addEventListener('load', () => {
+  // Allow ?reset=1 in URL to force setup screen
+  if (window.location.search.includes('reset=1')) {
+    localStorage.removeItem('almeer_config');
+  }
   loadConfig();
   loadScanLog();
   checkOnlineStatus();
@@ -851,6 +860,22 @@ window.addEventListener('load', () => {
     if (e.key === 'Enter') lookupOrder();
   });
 });
+
+// ── Change URL / Reset settings ──
+function showResetPrompt() {
+  const newUrl = prompt(
+    'Enter new Apps Script URL:\n(Leave blank to cancel)',
+    CONFIG.scriptUrl || ''
+  );
+  if (!newUrl || !newUrl.trim()) return;
+  if (!newUrl.includes('script.google.com')) {
+    alert('That doesn\'t look like a valid Apps Script URL. Try again.');
+    return;
+  }
+  CONFIG.scriptUrl = newUrl.trim();
+  localStorage.setItem('almeer_config', JSON.stringify(CONFIG));
+  showToast('✅ URL updated successfully!', 'success');
+}
 
 function loadConfig() {
   const saved = localStorage.getItem('almeer_config');
@@ -911,9 +936,29 @@ function checkOnlineStatus() {
 }
 
 // ═══════════════════════════════════════════
-//  DISPATCH SCANNER — html5-qrcode
+//  BEEP ON SUCCESSFUL SCAN
+// ═══════════════════════════════════════════
+function playBeep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+    oscillator.type = 'square';
+    oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+    oscillator.start(ctx.currentTime);
+    oscillator.stop(ctx.currentTime + 0.15);
+  } catch(e) {}
+}
+
+// ═══════════════════════════════════════════
+//  DISPATCH SCANNER — html5-qrcode (iOS fixed)
 // ═══════════════════════════════════════════
 let dispatchScanner = null;
+let scanLocked = false; // prevent double-scan
 
 async function toggleDispatchCamera() {
   if (dispatchCameraActive) {
@@ -922,36 +967,47 @@ async function toggleDispatchCamera() {
   }
 
   const btn = document.getElementById('dispatch-cam-btn');
+  const overlay = document.getElementById('dispatch-overlay');
   btn.textContent = '⏳ Starting...';
   btn.disabled = true;
+  scanLocked = false;
 
   try {
     dispatchScanner = new Html5Qrcode("dispatch-video");
+
+    const config = {
+      fps: 15,
+      qrbox: { width: 260, height: 160 },
+      aspectRatio: 1.5,
+      disableFlip: false,
+      formatsToSupport: [
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.QR_CODE,
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.DATA_MATRIX,
+        Html5QrcodeSupportedFormats.ITF,
+      ],
+    };
+
     await dispatchScanner.start(
       { facingMode: "environment" },
-      {
-        fps: 10,
-        qrbox: { width: 220, height: 140 },
-        formatsToSupport: [
-          Html5QrcodeSupportedFormats.CODE_128,
-          Html5QrcodeSupportedFormats.CODE_39,
-          Html5QrcodeSupportedFormats.QR_CODE,
-          Html5QrcodeSupportedFormats.EAN_13,
-          Html5QrcodeSupportedFormats.DATA_MATRIX,
-        ],
-      },
+      config,
       (decodedText) => {
-        // Scan success
+        if (scanLocked) return;
+        scanLocked = true;
+        playBeep();
         stopCamera('dispatch');
         lookupDispatchTracking(decodedText.trim());
       },
-      (errorMsg) => {
-        // Scanning frame — ignore per-frame errors
-      }
+      () => {} // ignore per-frame errors
     );
+
     dispatchCameraActive = true;
     btn.textContent = '⏹ Stop Camera';
     btn.disabled = false;
+    if (overlay) overlay.style.display = 'flex';
+
   } catch (err) {
     dispatchCameraActive = false;
     btn.textContent = '📷 Start Camera';
@@ -970,6 +1026,7 @@ async function stopCamera(type) {
       dispatchScanner = null;
     }
     dispatchCameraActive = false;
+    scanLocked = false;
     const btn = document.getElementById('dispatch-cam-btn');
     btn.textContent = '📷 Start Camera';
     btn.disabled = false;
@@ -1048,9 +1105,10 @@ function resetDispatchResult() {
 }
 
 // ═══════════════════════════════════════════
-//  RETURN SCANNER — html5-qrcode
+//  RETURN SCANNER — html5-qrcode (iOS + Android)
 // ═══════════════════════════════════════════
 let returnScanner = null;
+let returnScanLocked = false;
 
 async function toggleReturnCamera() {
   if (returnCameraActive) {
@@ -1061,33 +1119,43 @@ async function toggleReturnCamera() {
   const btn = document.getElementById('return-cam-btn');
   btn.textContent = '⏳ Starting...';
   btn.disabled = true;
+  returnScanLocked = false;
 
   try {
     returnScanner = new Html5Qrcode("return-video");
+
+    const config = {
+      fps: 15,
+      qrbox: { width: 260, height: 160 },
+      aspectRatio: 1.5,
+      disableFlip: false,
+      formatsToSupport: [
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.QR_CODE,
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.DATA_MATRIX,
+        Html5QrcodeSupportedFormats.ITF,
+      ],
+    };
+
     await returnScanner.start(
       { facingMode: "environment" },
-      {
-        fps: 10,
-        qrbox: { width: 220, height: 140 },
-        formatsToSupport: [
-          Html5QrcodeSupportedFormats.CODE_128,
-          Html5QrcodeSupportedFormats.CODE_39,
-          Html5QrcodeSupportedFormats.QR_CODE,
-          Html5QrcodeSupportedFormats.EAN_13,
-          Html5QrcodeSupportedFormats.DATA_MATRIX,
-        ],
-      },
+      config,
       (decodedText) => {
+        if (returnScanLocked) return;
+        returnScanLocked = true;
+        playBeep();
         stopCamera('return');
         lookupReturnTracking(decodedText.trim());
       },
-      (errorMsg) => {
-        // Per-frame error — ignore
-      }
+      () => {} // ignore per-frame errors
     );
+
     returnCameraActive = true;
     btn.textContent = '⏹ Stop Camera';
     btn.disabled = false;
+
   } catch (err) {
     returnCameraActive = false;
     btn.textContent = '📷 Start Camera';
