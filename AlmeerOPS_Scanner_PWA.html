@@ -652,13 +652,25 @@
 
   <!-- ── DISPATCH SCREEN ── -->
   <div class="screen active" id="screen-dispatch">
-    <div class="screen-title">Dispatch</div>
-    <div class="screen-sub">SCAN · VERIFY · CONFIRM</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+      <div class="screen-title" style="margin-bottom:0;">Dispatch</div>
+      <div id="bulk-counter" style="display:none;background:var(--accent);color:#0a0a0f;font-family:var(--mono);font-size:13px;font-weight:700;padding:6px 14px;border-radius:20px;">
+        0 SCANNED
+      </div>
+    </div>
+    <div class="screen-sub" id="dispatch-sub">BULK SCAN MODE — SCAN ALL THEN SYNC</div>
 
     <div class="offline-banner" id="offline-banner-dispatch">
       ⚠️ Offline — scans saved locally, will sync when connected
     </div>
 
+    <!-- DUPLICATE ALERT -->
+    <div id="duplicate-alert" style="display:none;background:rgba(255,77,109,0.12);border:1px solid var(--danger);border-radius:10px;padding:12px 16px;margin-bottom:14px;font-family:var(--mono);font-size:12px;color:var(--danger);">
+      🚨 DUPLICATE DETECTED — <span id="duplicate-tracking"></span><br>
+      <span style="color:var(--muted);font-size:11px;">This tracking ID was already scanned in this session.</span>
+    </div>
+
+    <!-- SCANNER BOX -->
     <div class="scanner-box" id="dispatch-scanner-box">
       <div id="dispatch-video" style="width:100%;"></div>
       <div class="scanner-overlay" id="dispatch-overlay">
@@ -669,29 +681,39 @@
           <div class="scan-corner bl"></div>
           <div class="scan-corner br"></div>
         </div>
-        <div class="scanner-hint">ALIGN BARCODE IN FRAME</div>
+        <div class="scanner-hint" id="scan-hint-text">ALIGN BARCODE IN FRAME</div>
       </div>
     </div>
 
-    <div class="scanner-controls">
-      <button class="btn-scan" id="dispatch-cam-btn" onclick="toggleDispatchCamera()">📷 Start Camera</button>
-      <button class="btn-outline" onclick="resetDispatchResult()">↺ Reset</button>
+    <!-- LAST SCANNED FLASH -->
+    <div id="last-scanned" style="display:none;background:var(--surface);border:1px solid var(--accent);border-radius:10px;padding:12px 16px;margin-bottom:14px;display:none;">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:2px;margin-bottom:4px;">LAST SCANNED</div>
+      <div style="font-size:14px;font-weight:700;" id="last-scanned-id">—</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--muted);" id="last-scanned-info">—</div>
     </div>
 
+    <!-- CAMERA CONTROLS -->
+    <div class="scanner-controls">
+      <button class="btn-scan" id="dispatch-cam-btn" onclick="toggleDispatchCamera()">📷 Start Camera</button>
+      <button class="btn-outline" onclick="clearBulkSession()">🗑 Clear All</button>
+    </div>
+
+    <!-- MANUAL INPUT -->
     <div class="manual-row">
       <input class="manual-input" id="dispatch-manual" placeholder="Type tracking ID manually..." autocomplete="off">
       <button class="btn-go" onclick="manualDispatch()">Go</button>
     </div>
 
-    <div class="result-card" id="dispatch-result">
-      <div class="result-status pending" id="dispatch-status-badge">⏳ PENDING</div>
-      <div id="dispatch-result-body"></div>
-      <div style="margin-top:16px;">
-        <button class="btn-scan" id="dispatch-confirm-btn" onclick="confirmDispatch()" style="display:none;">
-          ✅ Confirm Dispatch
-        </button>
-      </div>
+    <!-- BULK SCANNED LIST -->
+    <div id="bulk-list-wrap" style="display:none;margin-bottom:16px;">
+      <div class="section-label">SCANNED THIS SESSION</div>
+      <div id="bulk-list" style="display:flex;flex-direction:column;gap:8px;max-height:220px;overflow-y:auto;"></div>
     </div>
+
+    <!-- SYNC ALL BUTTON -->
+    <button id="sync-all-btn" onclick="syncAllBulkScans()" style="display:none;width:100%;background:var(--accent2);color:#fff;border:none;border-radius:10px;padding:18px;font-family:var(--display);font-size:16px;font-weight:800;cursor:pointer;margin-bottom:8px;">
+      ✅ Mark All As Dispatched (<span id="sync-count">0</span>)
+    </button>
   </div>
 
   <!-- ── RETURN SCREEN ── -->
@@ -911,9 +933,8 @@ function switchTab(tab) {
   document.getElementById('screen-' + tab).classList.add('active');
   document.getElementById('tab-' + tab).classList.add('active');
 
-  // Stop cameras when switching away
-  if (tab !== 'dispatch' && dispatchCameraActive) toggleDispatchCamera();
-  if (tab !== 'return' && returnCameraActive) toggleReturnCamera();
+  if (tab !== 'dispatch' && dispatchCameraActive) stopDispatchCamera();
+  if (tab !== 'return' && returnCameraActive) stopReturnCamera();
 
   if (tab === 'log') { loadScanLog(); updateLogStats(); }
 }
@@ -936,38 +957,64 @@ function checkOnlineStatus() {
 }
 
 // ═══════════════════════════════════════════
-//  BEEP ON SUCCESSFUL SCAN
+//  BULK DISPATCH STATE
 // ═══════════════════════════════════════════
-function playBeep() {
+let bulkSession = [];      // All scanned tracking IDs this session
+let scanCooldown = false;  // 1.5s cooldown between scans so same barcode isn't read twice
+
+// ═══════════════════════════════════════════
+//  BEEP SOUNDS
+// ═══════════════════════════════════════════
+function playBeep(type = 'success') {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const oscillator = ctx.createOscillator();
+    const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    oscillator.connect(gain);
+    osc.connect(gain);
     gain.connect(ctx.destination);
-    oscillator.type = 'square';
-    oscillator.frequency.setValueAtTime(880, ctx.currentTime);
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
-    oscillator.start(ctx.currentTime);
-    oscillator.stop(ctx.currentTime + 0.15);
+
+    if (type === 'success') {
+      // Short high beep — scanned OK
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(1200, ctx.currentTime);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.12);
+    } else if (type === 'duplicate') {
+      // Double low buzz — duplicate warning
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(200, ctx.currentTime);
+      gain.gain.setValueAtTime(0.4, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.3);
+    } else if (type === 'done') {
+      // Double high beep — all synced
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.setValueAtTime(1400, ctx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.25);
+    }
   } catch(e) {}
 }
 
 // ═══════════════════════════════════════════
-//  DISPATCH SCANNER — html5-qrcode (iOS fixed)
+//  DISPATCH SCANNER — Bulk Mode
 // ═══════════════════════════════════════════
 let dispatchScanner = null;
-let scanLocked = false; // prevent double-scan
+let scanLocked = false;
 
 async function toggleDispatchCamera() {
   if (dispatchCameraActive) {
-    await stopCamera('dispatch');
+    await stopDispatchCamera();
     return;
   }
 
   const btn = document.getElementById('dispatch-cam-btn');
-  const overlay = document.getElementById('dispatch-overlay');
   btn.textContent = '⏳ Starting...';
   btn.disabled = true;
   scanLocked = false;
@@ -975,38 +1022,32 @@ async function toggleDispatchCamera() {
   try {
     dispatchScanner = new Html5Qrcode("dispatch-video");
 
-    const config = {
-      fps: 15,
-      qrbox: { width: 260, height: 160 },
-      aspectRatio: 1.5,
-      disableFlip: false,
-      formatsToSupport: [
-        Html5QrcodeSupportedFormats.CODE_128,
-        Html5QrcodeSupportedFormats.CODE_39,
-        Html5QrcodeSupportedFormats.QR_CODE,
-        Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.DATA_MATRIX,
-        Html5QrcodeSupportedFormats.ITF,
-      ],
-    };
-
     await dispatchScanner.start(
       { facingMode: "environment" },
-      config,
-      (decodedText) => {
-        if (scanLocked) return;
-        scanLocked = true;
-        playBeep();
-        stopCamera('dispatch');
-        lookupDispatchTracking(decodedText.trim());
+      {
+        fps: 20,
+        qrbox: { width: 280, height: 160 },
+        aspectRatio: 1.5,
+        disableFlip: false,
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.QR_CODE,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.DATA_MATRIX,
+          Html5QrcodeSupportedFormats.ITF,
+        ],
       },
-      () => {} // ignore per-frame errors
+      (decodedText) => {
+        if (scanLocked || scanCooldown) return;
+        processBulkScan(decodedText.trim());
+      },
+      () => {}
     );
 
     dispatchCameraActive = true;
     btn.textContent = '⏹ Stop Camera';
     btn.disabled = false;
-    if (overlay) overlay.style.display = 'flex';
 
   } catch (err) {
     dispatchCameraActive = false;
@@ -1016,92 +1057,165 @@ async function toggleDispatchCamera() {
   }
 }
 
-async function stopCamera(type) {
-  if (type === 'dispatch') {
-    if (dispatchScanner) {
-      try {
-        if (dispatchCameraActive) await dispatchScanner.stop();
-        dispatchScanner.clear();
-      } catch(e) {}
-      dispatchScanner = null;
-    }
-    dispatchCameraActive = false;
-    scanLocked = false;
-    const btn = document.getElementById('dispatch-cam-btn');
-    btn.textContent = '📷 Start Camera';
-    btn.disabled = false;
-  } else {
-    if (returnScanner) {
-      try {
-        if (returnCameraActive) await returnScanner.stop();
-        returnScanner.clear();
-      } catch(e) {}
-      returnScanner = null;
-    }
-    returnCameraActive = false;
-    const btn = document.getElementById('return-cam-btn');
-    btn.textContent = '📷 Start Camera';
-    btn.disabled = false;
+async function stopDispatchCamera() {
+  if (dispatchScanner) {
+    try {
+      if (dispatchCameraActive) await dispatchScanner.stop();
+      dispatchScanner.clear();
+    } catch(e) {}
+    dispatchScanner = null;
   }
+  dispatchCameraActive = false;
+  scanLocked = false;
+  document.getElementById('dispatch-cam-btn').textContent = '📷 Start Camera';
+  document.getElementById('dispatch-cam-btn').disabled = false;
+}
+
+// ── Core: process each scan instantly ──
+function processBulkScan(trackingId) {
+  // Start cooldown — prevents same barcode firing twice
+  scanCooldown = true;
+  setTimeout(() => { scanCooldown = false; }, 1500);
+
+  // Duplicate check
+  const isDuplicate = bulkSession.some(s => s.tracking === trackingId);
+  if (isDuplicate) {
+    playBeep('duplicate');
+    const alert = document.getElementById('duplicate-alert');
+    document.getElementById('duplicate-tracking').textContent = trackingId;
+    alert.style.display = 'block';
+    setTimeout(() => { alert.style.display = 'none'; }, 4000);
+    showToast('🚨 DUPLICATE: ' + trackingId, 'error');
+    return;
+  }
+
+  // Add to session
+  playBeep('success');
+  const entry = {
+    tracking: trackingId,
+    time: new Date().toISOString(),
+    scannedBy: CONFIG.userName,
+  };
+  bulkSession.push(entry);
+
+  // Hide duplicate alert if showing
+  document.getElementById('duplicate-alert').style.display = 'none';
+
+  // Flash last scanned
+  const lastEl = document.getElementById('last-scanned');
+  const lastId = document.getElementById('last-scanned-id');
+  const lastInfo = document.getElementById('last-scanned-info');
+  lastEl.style.display = 'block';
+  lastId.textContent = trackingId;
+  lastInfo.textContent = new Date().toLocaleTimeString('en-PK', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+
+  // Update counter badge
+  updateBulkUI();
+}
+
+function updateBulkUI() {
+  const count = bulkSession.length;
+  const counter = document.getElementById('bulk-counter');
+  const syncBtn = document.getElementById('sync-all-btn');
+  const syncCount = document.getElementById('sync-count');
+  const listWrap = document.getElementById('bulk-list-wrap');
+  const list = document.getElementById('bulk-list');
+
+  counter.style.display = count > 0 ? 'block' : 'none';
+  counter.textContent = count + ' SCANNED';
+  syncBtn.style.display = count > 0 ? 'block' : 'none';
+  syncCount.textContent = count;
+  listWrap.style.display = count > 0 ? 'block' : 'none';
+
+  // Rebuild list (newest first)
+  list.innerHTML = [...bulkSession].reverse().map((s, i) => `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;
+      padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+      <div>
+        <div style="font-family:var(--mono);font-size:12px;color:var(--accent);">${s.tracking}</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);">${formatTime(s.time)}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-family:var(--mono);font-size:9px;background:rgba(0,212,170,0.1);
+          color:var(--accent);padding:3px 8px;border-radius:20px;">READY</span>
+        <button onclick="removeBulkScan('${s.tracking}')"
+          style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0 4px;">×</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function removeBulkScan(trackingId) {
+  bulkSession = bulkSession.filter(s => s.tracking !== trackingId);
+  updateBulkUI();
+  if (bulkSession.length === 0) {
+    document.getElementById('last-scanned').style.display = 'none';
+  }
+}
+
+function clearBulkSession() {
+  if (bulkSession.length === 0) return;
+  if (!confirm('Clear all ' + bulkSession.length + ' scanned items?')) return;
+  bulkSession = [];
+  updateBulkUI();
+  document.getElementById('last-scanned').style.display = 'none';
+  document.getElementById('duplicate-alert').style.display = 'none';
+  showToast('Session cleared', 'warn');
+}
+
+// ── Sync all at once ──
+async function syncAllBulkScans() {
+  if (bulkSession.length === 0) return;
+
+  const btn = document.getElementById('sync-all-btn');
+  btn.textContent = '⏳ Syncing...';
+  btn.disabled = true;
+
+  let synced = 0;
+  let failed = 0;
+
+  for (const entry of bulkSession) {
+    const success = await postScan({
+      action: 'dispatch',
+      tracking: entry.tracking,
+      scannedBy: entry.scannedBy,
+    });
+    if (success) {
+      addToLocalLog({ type: 'dispatch', tracking: entry.tracking, time: entry.time });
+      synced++;
+    } else {
+      // Save to pending if failed
+      pendingScans.push({ ...entry, action: 'dispatch' });
+      failed++;
+    }
+  }
+
+  localStorage.setItem('almeer_pending', JSON.stringify(pendingScans));
+
+  playBeep('done');
+  updateLogStats();
+
+  const msg = synced + ' dispatched' + (failed > 0 ? ', ' + failed + ' saved offline' : '');
+  showToast('✅ ' + msg, 'success');
+
+  // Clear session after sync
+  bulkSession = [];
+  updateBulkUI();
+  document.getElementById('last-scanned').style.display = 'none';
+
+  btn.textContent = '✅ Mark All As Dispatched (0)';
+  btn.disabled = false;
 }
 
 function manualDispatch() {
   const val = document.getElementById('dispatch-manual').value.trim();
   if (!val) { showToast('Enter a tracking ID', 'warn'); return; }
-  lookupDispatchTracking(val);
   document.getElementById('dispatch-manual').value = '';
-}
-
-async function lookupDispatchTracking(trackingId) {
-  currentDispatchTracking = trackingId;
-  const card = document.getElementById('dispatch-result');
-  const body = document.getElementById('dispatch-result-body');
-  const badge = document.getElementById('dispatch-status-badge');
-  const confirmBtn = document.getElementById('dispatch-confirm-btn');
-
-  card.classList.add('visible');
-  body.innerHTML = '<div class="loading"><div class="spinner"></div> Looking up order...</div>';
-  confirmBtn.style.display = 'none';
-
-  const data = await fetchOrderLookup(trackingId);
-
-  if (data && data.found) {
-    badge.className = 'result-status ' + statusClass(data.status);
-    badge.textContent = statusEmoji(data.status) + ' ' + (data.status || 'UNKNOWN').toUpperCase();
-    body.innerHTML = buildResultRows([
-      ['TRACKING', trackingId],
-      ['ORDER ID', data.orderId],
-      ['CUSTOMER', data.customerName],
-      ['PRODUCT', data.product + (data.variant && data.variant !== 'N/A' ? ' · ' + data.variant : '')],
-      ['CITY', data.city],
-      ['COD AMOUNT', 'PKR ' + (data.cod || 0).toLocaleString()],
-    ], [5]); // index 5 = COD → green style
-    confirmBtn.style.display = 'block';
-  } else {
-    badge.className = 'result-status pending';
-    badge.textContent = '⚠️ NOT FOUND IN SHEETS';
-    body.innerHTML = buildResultRows([
-      ['TRACKING', trackingId],
-      ['STATUS', 'Order not found in Almeer OPS'],
-    ]);
-    confirmBtn.style.display = 'block';
-    confirmBtn.textContent = '✅ Log Anyway';
-  }
-}
-
-function confirmDispatch() {
-  if (!currentDispatchTracking) return;
-  postScan({ action: 'dispatch', tracking: currentDispatchTracking, scannedBy: CONFIG.userName });
-  addToLocalLog({ type: 'dispatch', tracking: currentDispatchTracking, time: new Date().toISOString() });
-  showToast('✅ Dispatched: ' + currentDispatchTracking, 'success');
-  resetDispatchResult();
-  updateLogStats();
+  processBulkScan(val);
 }
 
 function resetDispatchResult() {
-  currentDispatchTracking = null;
-  document.getElementById('dispatch-result').classList.remove('visible');
-  document.getElementById('dispatch-manual').value = '';
+  clearBulkSession();
 }
 
 // ═══════════════════════════════════════════
@@ -1110,9 +1224,22 @@ function resetDispatchResult() {
 let returnScanner = null;
 let returnScanLocked = false;
 
+async function stopReturnCamera() {
+  if (returnScanner) {
+    try {
+      if (returnCameraActive) await returnScanner.stop();
+      returnScanner.clear();
+    } catch(e) {}
+    returnScanner = null;
+  }
+  returnCameraActive = false;
+  document.getElementById('return-cam-btn').textContent = '📷 Start Camera';
+  document.getElementById('return-cam-btn').disabled = false;
+}
+
 async function toggleReturnCamera() {
   if (returnCameraActive) {
-    await stopCamera('return');
+    await stopReturnCamera();
     return;
   }
 
@@ -1145,8 +1272,8 @@ async function toggleReturnCamera() {
       (decodedText) => {
         if (returnScanLocked) return;
         returnScanLocked = true;
-        playBeep();
-        stopCamera('return');
+        playBeep('success');
+        stopReturnCamera();
         lookupReturnTracking(decodedText.trim());
       },
       () => {} // ignore per-frame errors
@@ -1273,10 +1400,7 @@ async function fetchOrderLookup(trackingId) {
 
 async function postScan(payload) {
   if (!navigator.onLine) {
-    pendingScans.push({ ...payload, timestamp: new Date().toISOString() });
-    localStorage.setItem('almeer_pending', JSON.stringify(pendingScans));
-    showToast('Saved offline — will sync later', 'warn');
-    return;
+    return false;
   }
   try {
     await fetch(CONFIG.scriptUrl, {
@@ -1284,11 +1408,9 @@ async function postScan(payload) {
       body: JSON.stringify(payload),
       headers: { 'Content-Type': 'application/json' },
     });
+    return true;
   } catch (err) {
-    // Save to pending queue
-    pendingScans.push({ ...payload, timestamp: new Date().toISOString() });
-    localStorage.setItem('almeer_pending', JSON.stringify(pendingScans));
-    showToast('Saved offline — will sync later', 'warn');
+    return false;
   }
 }
 
