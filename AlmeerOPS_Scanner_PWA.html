@@ -1072,24 +1072,26 @@ async function stopDispatchCamera() {
 }
 
 // ── Core: process each scan instantly ──
-function processBulkScan(trackingId) {
+async function processBulkScan(trackingId) {
   // Start cooldown — prevents same barcode firing twice
   scanCooldown = true;
   setTimeout(() => { scanCooldown = false; }, 1500);
 
-  // Duplicate check
-  const isDuplicate = bulkSession.some(s => s.tracking === trackingId);
-  if (isDuplicate) {
-    playBeep('duplicate');
-    const alert = document.getElementById('duplicate-alert');
-    document.getElementById('duplicate-tracking').textContent = trackingId;
-    alert.style.display = 'block';
-    setTimeout(() => { alert.style.display = 'none'; }, 4000);
-    showToast('🚨 DUPLICATE: ' + trackingId, 'error');
+  // 1. Check duplicate in CURRENT SESSION first (instant)
+  const isDuplicateSession = bulkSession.some(s => s.tracking === trackingId);
+  if (isDuplicateSession) {
+    showDuplicateAlert(trackingId, 'Already in this scan session');
     return;
   }
 
-  // Add to session
+  // 2. Check against DISPATCH_LOG in sheet (async — catches previous sessions)
+  const alreadyDispatched = await checkAlreadyDispatched(trackingId);
+  if (alreadyDispatched) {
+    showDuplicateAlert(trackingId, 'Already dispatched in a previous session');
+    return;
+  }
+
+  // All clear — add to session
   playBeep('success');
   const entry = {
     tracking: trackingId,
@@ -1111,6 +1113,32 @@ function processBulkScan(trackingId) {
 
   // Update counter badge
   updateBulkUI();
+}
+
+function showDuplicateAlert(trackingId, reason) {
+  playBeep('duplicate');
+  const alert = document.getElementById('duplicate-alert');
+  document.getElementById('duplicate-tracking').textContent = trackingId;
+  alert.querySelector('span').textContent = '⚠️ ' + reason + ' — double check this parcel!';
+  alert.style.display = 'block';
+  setTimeout(() => { alert.style.display = 'none'; }, 5000);
+  showToast('🚨 DUPLICATE: ' + trackingId, 'error');
+}
+
+async function checkAlreadyDispatched(trackingId) {
+  if (!navigator.onLine || !CONFIG.scriptUrl) return false;
+  try {
+    const params = new URLSearchParams({
+      action: 'checkDispatch',
+      tracking: trackingId,
+    });
+    const res = await fetch(CONFIG.scriptUrl + '?' + params.toString());
+    const text = await res.text();
+    const json = JSON.parse(text);
+    return json.alreadyDispatched === true;
+  } catch(e) {
+    return false; // if check fails, allow scan
+  }
 }
 
 function updateBulkUI() {
