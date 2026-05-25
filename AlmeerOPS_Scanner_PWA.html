@@ -1403,12 +1403,22 @@ async function postScan(payload) {
     return false;
   }
   try {
-    await fetch(CONFIG.scriptUrl, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-      headers: { 'Content-Type': 'application/json' },
+    // Use GET with URL params — works reliably on both iOS Safari and Android Chrome
+    // Apps Script doGet handles both scan actions and order lookups
+    const params = new URLSearchParams({
+      action: payload.action,
+      tracking: payload.tracking,
+      scannedBy: payload.scannedBy || CONFIG.userName,
     });
-    return true;
+    const url = CONFIG.scriptUrl + '?' + params.toString();
+    const res = await fetch(url, { method: 'GET' });
+    const text = await res.text();
+    try {
+      const json = JSON.parse(text);
+      return json.success !== false;
+    } catch(e) {
+      return true; // assume success if response isn't JSON
+    }
   } catch (err) {
     return false;
   }
