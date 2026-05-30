@@ -810,9 +810,12 @@
       </div>
     </div>
 
-    <div style="margin-top:20px;">
+    <div style="margin-top:20px;display:flex;gap:10px;">
       <button class="btn-primary" onclick="syncPendingScans()" style="background:var(--accent2);">
         🔄 Sync Pending Scans
+      </button>
+      <button class="btn-outline" onclick="clearScanHistory()" style="flex:0.5;">
+        🗑 Clear
       </button>
     </div>
   </div>
@@ -1460,19 +1463,33 @@ async function syncPendingScans() {
   let synced = 0;
   for (const scan of pending) {
     try {
-      await fetch(CONFIG.scriptUrl, {
-        method: 'POST',
-        body: JSON.stringify(scan),
-        headers: { 'Content-Type': 'application/json' },
+      const params = new URLSearchParams({
+        action: scan.action || 'dispatch',
+        tracking: scan.tracking,
+        scannedBy: scan.scannedBy || CONFIG.userName,
       });
+      await fetch(CONFIG.scriptUrl + '?' + params.toString(), { method: 'GET' });
       synced++;
-    } catch (e) {}
+    } catch(e) {}
   }
 
   localStorage.removeItem('almeer_pending');
   pendingScans = [];
   updateLogStats();
   showToast('Synced ' + synced + ' scans', 'success');
+}
+
+// Clear today's scan history from localStorage
+// Does NOT affect the sheet — only clears the phone's local log
+function clearScanHistory() {
+  if (!confirm('Clear today\'s scan history from this device?\n\nThis does NOT delete data from the sheet.')) return;
+  const todayKey = new Date().toDateString();
+  localStorage.removeItem('almeer_log_' + todayKey);
+  localStorage.removeItem('almeer_pending');
+  scanLog = [];
+  pendingScans = [];
+  updateLogStats();
+  showToast('Scan history cleared', 'warn');
 }
 
 // ═══════════════════════════════════════════
